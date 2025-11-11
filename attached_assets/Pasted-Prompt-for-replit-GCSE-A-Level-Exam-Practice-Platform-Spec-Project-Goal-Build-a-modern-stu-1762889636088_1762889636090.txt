@@ -1,0 +1,120 @@
+Prompt for replit: GCSE & A-Level Exam Practice Platform (Spec)
+Project Goal
+•	Build a modern, student-friendly website where users can practice GCSE and A-Level exam papers.
+•	Automatically create and maintain a database of past papers and mark schemes, organised by level and exam board.
+•	Let admins manually add or edit papers at any time.
+•	Use the OpenAI API to analyse answers on a page-by-page basis and provide realistic marks and feedback.
+Scope and Organisation
+•	Levels: GCSE and A-Level.
+•	Exam Boards: AQA, Edexcel/Pearson, OCR, WJEC/ Eduqas, CCEA (configurable).
+•	Core Subjects (minimum):
+o	GCSE: Mathematics, English Language, English Literature, Biology, Chemistry, Physics, Combined Science.
+o	A-Level: Mathematics, Biology, Chemistry, Physics, English Language, English Literature, Psychology, Business (extendable to more subjects).
+•	Taxonomy: Level → Exam Board → Subject → Year/Series → Paper.
+Paper Ingestion and Database
+•	Automated Import (preferred):
+o	Crawl or fetch PDFs and mark schemes directly from exam board websites (where permitted).
+o	Normalise and store metadata: subject, level, board, qualification code, series (e.g., Summer 2023), paper number, component code, tier (if any), and URL provenance.
+o	De-duplicate via checksum and component code.
+•	Manual Add (Admin UI):
+o	Upload PDF(s), enter metadata, link mark scheme, map pages to questions.
+o	Bulk CSV/JSON import for fast seeding.
+•	File Handling:
+o	Store originals in object storage (e.g., S3/GCS).
+o	Generate web-optimised, per-page images for fast viewing.
+o	Optional OCR for searchable text.
+•	Compliance:
+o	Respect robots.txt and site terms; cache only where permitted; otherwise store metadata + links.
+o	Configurable allowlists/denylists per domain.
+Data Model (core tables/collections)
+•	Boards: id, name, slug.
+•	Levels: id, name (GCSE, A-Level).
+•	Subjects: id, name, level_id.
+•	Papers: id, subject_id, board_id, level_id, series, year, paper_code, tier, url_source, storage_uri, status.
+•	PaperPages: id, paper_id, page_number, image_uri, text_ocr, question_refs.
+•	MarkSchemes: id, paper_id, storage_uri, url_source.
+•	Questions: id, paper_id, question_number, page_range, max_marks, topic_tags, rubric.
+•	Users: id, email, role (student/admin), profile.
+•	Attempts: id, user_id, paper_id, started_at, completed_at, total_score, max_score.
+•	Responses: id, attempt_id, page_number, question_id (nullable), student_answer_text, overlay_annotations, ai_score, ai_feedback, ai_confidence, max_marks, reviewed_by_human, final_score.
+Search and Discovery
+•	Full-text search across subject, board, series, paper code, and OCR text.
+•	Filters: level, board, subject, year, tier.
+•	Sort by year/series and popularity.
+Interactive Exam Viewer
+•	Layouts:
+o	Split view: left = PDF/page viewer; right = answer text boxes per question/page.
+o	Overlay mode: type directly on top of the PDF with positioned text boxes/ink annotations.
+•	Per-Page Flow:
+o	Show current page and related question(s) with max marks.
+o	Provide a single answer box per question or per page (configurable).
+o	Auto-save answers; keyboard-first UX.
+•	Mark Scheme Peek:
+o	Hidden by default; optional reveal after submission or per admin policy.
+AI-Powered Marking and Feedback (OpenAI API)
+•	Granularity: One API call per page (or per question) to keep context focused.
+•	Inputs to the model:
+o	Page image/text (extracted via OCR) or page PDF content.
+o	Student’s answer text and/or overlay annotations.
+o	Relevant mark-scheme excerpt and marking rubric (max marks, acceptable answers, method marks).
+•	Outputs expected:
+o	Awarded marks (0…max) with brief rationale.
+o	Breakdown by criteria (AO marks, method/accuracy/communication where applicable).
+o	Actionable feedback and improvement tips.
+o	Confidence score; flag for human review if low confidence or ambiguous.
+•	Aggregation:
+o	Sum per-page marks to paper total.
+o	Show section-level insights (topics, skills).
+•	Safeguards:
+o	Rubric-first prompts to avoid over-generous marking.
+o	Hallucination checks: require quotes from mark scheme lines used.
+o	Rate limiting, retries, cost tracking, and caching.
+•	Human Review:
+o	Admin override UI to adjust scores and save final_score separate from ai_score.
+User Accounts and Progress
+•	Optional Login: email or SSO.
+•	Dashboard:
+o	Attempt history, best scores, recent activity.
+o	Topic heatmap and weak-area suggestions.
+•	Reports:
+o	Download feedback as PDF, including page-by-page marks and comments.
+o	Shareable private link (optional).
+Admin Tools
+•	Paper ingestion dashboard (status, errors, duplicates).
+•	Manual paper creation/editing and page-to-question mapping.
+•	Moderation queue for low-confidence AI marks.
+•	Subject/board/series management.
+•	Usage and cost analytics for AI calls.
+Technical Architecture
+•	Frontend: React/Next.js (SSR/ISR), PDF.js for rendering, canvas overlay for annotations.
+•	Backend: Node.js/TypeScript (or Python FastAPI), REST/GraphQL API.
+•	Storage: Object storage for PDFs/images; relational DB for metadata (PostgreSQL) plus search index (OpenSearch/Meilisearch).
+•	Background Jobs: Queue workers for crawling, OCR, page slicing, and mark-scheme linking.
+•	AI Integration: OpenAI API for vision + text; structured JSON outputs validated against a schema.
+•	Auth: JWT or session-based; roles for student/admin.
+•	Observability: Structured logs, metrics, tracing; audit trail for score changes.
+PDF and Page Handling
+•	Split PDFs into pages; store page images and text layers.
+•	Map pages → questions → max marks.
+•	Allow multi-page questions by linking page ranges.
+UI/UX Requirements
+•	Clean, minimal, exam-style interface.
+•	Responsive for desktop and tablet.
+•	Keyboard shortcuts for page nav and submitting pages.
+•	Accessible (WCAG 2.1 AA): contrast, focus states, ARIA labels, screen-reader support.
+Security and Compliance
+•	Respect content licensing; configurable to store links vs. files.
+•	GDPR-ready: data export/delete, regional storage, minimal PII.
+•	CSRF protection, rate limiting, file scanning on upload.
+•	Backups and disaster recovery.
+Performance and Cost Controls
+•	Lazy-load pages and prefetch next page.
+•	Cache mark-scheme excerpts per page.
+•	Batch or stream API calls where possible; cap tokens per request.
+•	Tiered AI policies per subject/board if rubrics differ.
+Success Metrics
+•	Number of papers and subjects covered.
+•	First-attempt completion rate.
+•	Correlation between AI marks and human moderation.
+•	Student improvement over attempts.
+
