@@ -30,13 +30,19 @@ import {
 import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
 
+export type EnrichedPaper = Paper & {
+  boardName: string;
+  subjectName: string;
+  levelName: string;
+};
+
 export interface IStorage {
   getBoards(): Promise<Board[]>;
   getLevels(): Promise<Level[]>;
   getSubjects(): Promise<Subject[]>;
   
-  getPapers(filters?: { levelId?: string; boardId?: string; subjectId?: string; year?: number }): Promise<Paper[]>;
-  getPaper(id: string): Promise<Paper | undefined>;
+  getPapers(filters?: { levelId?: string; boardId?: string; subjectId?: string; year?: number }): Promise<EnrichedPaper[]>;
+  getPaper(id: string): Promise<EnrichedPaper | undefined>;
   createPaper(paper: InsertPaper): Promise<Paper>;
   updatePaper(id: string, paper: Partial<InsertPaper>): Promise<Paper | undefined>;
   
@@ -73,8 +79,17 @@ export class DbStorage implements IStorage {
     return await db.select().from(subjects);
   }
 
-  async getPapers(filters?: { levelId?: string; boardId?: string; subjectId?: string; year?: number }): Promise<Paper[]> {
-    let query = db.select().from(papers);
+  async getPapers(filters?: { levelId?: string; boardId?: string; subjectId?: string; year?: number }): Promise<EnrichedPaper[]> {
+    let query = db.select({
+      paper: papers,
+      board: boards,
+      subject: subjects,
+      level: levels,
+    })
+    .from(papers)
+    .innerJoin(boards, eq(papers.boardId, boards.id))
+    .innerJoin(subjects, eq(papers.subjectId, subjects.id))
+    .innerJoin(levels, eq(papers.levelId, levels.id));
     
     const conditions = [];
     if (filters?.levelId) conditions.push(eq(papers.levelId, filters.levelId));
@@ -86,12 +101,38 @@ export class DbStorage implements IStorage {
       query = query.where(and(...conditions)) as any;
     }
     
-    return await query.orderBy(desc(papers.year));
+    const results = await query.orderBy(desc(papers.year));
+    
+    return results.map(row => ({
+      ...row.paper,
+      boardName: row.board.name,
+      subjectName: row.subject.name,
+      levelName: row.level.name,
+    }));
   }
 
-  async getPaper(id: string): Promise<Paper | undefined> {
-    const result = await db.select().from(papers).where(eq(papers.id, id));
-    return result[0];
+  async getPaper(id: string): Promise<EnrichedPaper | undefined> {
+    const result = await db.select({
+      paper: papers,
+      board: boards,
+      subject: subjects,
+      level: levels,
+    })
+    .from(papers)
+    .innerJoin(boards, eq(papers.boardId, boards.id))
+    .innerJoin(subjects, eq(papers.subjectId, subjects.id))
+    .innerJoin(levels, eq(papers.levelId, levels.id))
+    .where(eq(papers.id, id));
+    
+    if (result.length === 0) return undefined;
+    
+    const row = result[0];
+    return {
+      ...row.paper,
+      boardName: row.board.name,
+      subjectName: row.subject.name,
+      levelName: row.level.name,
+    };
   }
 
   async createPaper(paper: InsertPaper): Promise<Paper> {

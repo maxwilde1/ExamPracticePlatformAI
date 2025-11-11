@@ -1,19 +1,9 @@
 import PaperCard from "./PaperCard";
 import { useLocation } from "wouter";
-
-interface Paper {
-  id: string;
-  title: string;
-  board: string;
-  subject: string;
-  year: string;
-  series: string;
-  questionCount: number;
-  totalMarks: number;
-}
+import type { EnrichedPaper } from "../../../server/storage";
 
 interface PaperGridProps {
-  papers: Paper[];
+  papers: EnrichedPaper[];
 }
 
 export default function PaperGrid({ papers }: PaperGridProps) {

@@ -2,24 +2,17 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FileText, Clock } from "lucide-react";
+import type { EnrichedPaper } from "../../../server/storage";
 
-interface PaperCardProps {
-  id: string;
-  title: string;
-  board: string;
-  subject: string;
-  year: string;
-  series: string;
-  questionCount: number;
-  totalMarks: number;
+interface PaperCardProps extends EnrichedPaper {
   onStartPractice?: () => void;
 }
 
 export default function PaperCard({
   id,
   title,
-  board,
-  subject,
+  boardName,
+  subjectName,
   year,
   series,
   questionCount,
@@ -31,7 +24,7 @@ export default function PaperCard({
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2 mb-2">
           <Badge variant="secondary" className="uppercase text-xs font-medium">
-            {board}
+            {boardName}
           </Badge>
           <Badge variant="outline" className="text-xs">
             {year}
@@ -46,23 +39,29 @@ export default function PaperCard({
         <div className="flex flex-col gap-2 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <FileText className="w-4 h-4" />
-            <span>{subject}</span>
+            <span>{subjectName}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4" />
-            <span>{series}</span>
-          </div>
+          {series && (
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              <span>{series}</span>
+            </div>
+          )}
         </div>
         
         <div className="flex gap-4 mt-4 text-sm">
-          <div>
-            <span className="font-medium">{questionCount}</span>
-            <span className="text-muted-foreground ml-1">questions</span>
-          </div>
-          <div>
-            <span className="font-medium">{totalMarks}</span>
-            <span className="text-muted-foreground ml-1">marks</span>
-          </div>
+          {questionCount && (
+            <div>
+              <span className="font-medium">{questionCount}</span>
+              <span className="text-muted-foreground ml-1">questions</span>
+            </div>
+          )}
+          {totalMarks && (
+            <div>
+              <span className="font-medium">{totalMarks}</span>
+              <span className="text-muted-foreground ml-1">marks</span>
+            </div>
+          )}
         </div>
       </CardContent>
       

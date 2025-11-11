@@ -1,90 +1,80 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Header from "@/components/Header";
 import HeroSection from "@/components/HeroSection";
 import SearchFilterBar from "@/components/SearchFilterBar";
 import PaperGrid from "@/components/PaperGrid";
-
-const mockPapers = [
-  {
-    id: "1",
-    title: "Mathematics Paper 1 (Non-Calculator)",
-    board: "AQA",
-    subject: "Mathematics",
-    year: "2024",
-    series: "Summer 2024",
-    questionCount: 25,
-    totalMarks: 80,
-  },
-  {
-    id: "2",
-    title: "Biology Paper 2: The Variety of Living Organisms",
-    board: "Edexcel",
-    subject: "Biology",
-    year: "2023",
-    series: "Summer 2023",
-    questionCount: 18,
-    totalMarks: 60,
-  },
-  {
-    id: "3",
-    title: "English Language Paper 1: Explorations in Creative Reading",
-    board: "AQA",
-    subject: "English Language",
-    year: "2024",
-    series: "Summer 2024",
-    questionCount: 5,
-    totalMarks: 80,
-  },
-  {
-    id: "4",
-    title: "Chemistry Paper 1: Atomic Structure and the Periodic Table",
-    board: "OCR",
-    subject: "Chemistry",
-    year: "2023",
-    series: "November 2023",
-    questionCount: 22,
-    totalMarks: 70,
-  },
-  {
-    id: "5",
-    title: "Physics Paper 2: Electricity and Magnetism",
-    board: "AQA",
-    subject: "Physics",
-    year: "2024",
-    series: "Summer 2024",
-    questionCount: 20,
-    totalMarks: 75,
-  },
-  {
-    id: "6",
-    title: "Mathematics Paper 3 (Calculator)",
-    board: "Edexcel",
-    subject: "Mathematics",
-    year: "2023",
-    series: "Summer 2023",
-    questionCount: 28,
-    totalMarks: 80,
-  },
-];
+import type { Level, Board, Subject } from "@shared/schema";
+import type { EnrichedPaper } from "../../server/storage";
 
 export default function HomePage() {
-  const [papers] = useState(mockPapers);
+  const [filters, setFilters] = useState({
+    levelId: "",
+    boardId: "",
+    subjectId: "",
+    year: "",
+  });
+
+  const queryParams = new URLSearchParams();
+  if (filters.levelId) queryParams.append("levelId", filters.levelId);
+  if (filters.boardId) queryParams.append("boardId", filters.boardId);
+  if (filters.subjectId) queryParams.append("subjectId", filters.subjectId);
+  if (filters.year) queryParams.append("year", filters.year);
+  
+  const queryString = queryParams.toString();
+  const papersUrl = `/api/papers${queryString ? `?${queryString}` : ""}`;
+
+  const { data: papers = [], isLoading } = useQuery<EnrichedPaper[]>({
+    queryKey: [papersUrl],
+  });
+
+  const { data: levels = [] } = useQuery<Level[]>({
+    queryKey: ["/api/levels"],
+  });
+
+  const { data: boards = [] } = useQuery<Board[]>({
+    queryKey: ["/api/boards"],
+  });
+
+  const { data: subjects = [] } = useQuery<Subject[]>({
+    queryKey: ["/api/subjects"],
+  });
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <HeroSection />
-      <SearchFilterBar />
+      <SearchFilterBar 
+        filters={filters}
+        setFilters={setFilters}
+        levels={levels}
+        boards={boards}
+        subjects={subjects}
+      />
       
       <div className="container mx-auto px-4 py-12 max-w-7xl">
         <div className="mb-6">
           <h2 className="text-2xl font-semibold mb-2">Available Past Papers</h2>
           <p className="text-muted-foreground">
-            {papers.length} papers available for practice
+            {isLoading ? "Loading papers..." : `${papers.length} papers available for practice`}
           </p>
         </div>
         
-        <PaperGrid papers={papers} />
+        {isLoading ? (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="h-64 bg-card rounded-lg animate-pulse" />
+            ))}
+          </div>
+        ) : papers.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground text-lg">
+              No papers found. Try adjusting your filters or check back soon.
+            </p>
+          </div>
+        ) : (
+          <PaperGrid papers={papers} />
+        )}
       </div>
     </div>
   );
