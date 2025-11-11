@@ -51,15 +51,11 @@ export default function ExamViewer({
   }, [currentPage, paperId, currentResponse]);
 
   const handlePrevious = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
-    }
+    setCurrentPage(prev => prev > 1 ? prev - 1 : prev);
   };
 
   const handleNext = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1);
-    }
+    setCurrentPage(prev => prev < totalPages ? prev + 1 : prev);
   };
 
   const handleAutoSave = () => {
