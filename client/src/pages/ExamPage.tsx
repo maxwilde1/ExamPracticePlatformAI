@@ -1,16 +1,132 @@
 import { useRoute, useLocation } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
 import ExamViewer from "@/components/ExamViewer";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { EnrichedPaper } from "../../../server/storage";
+import type { PaperPage, Attempt } from "@shared/schema";
 
 export default function ExamPage() {
   const [, params] = useRoute("/exam/:id");
   const [, setLocation] = useLocation();
+  const [attemptId, setAttemptId] = useState<string | null>(null);
+  const [sessionId] = useState(() => {
+    const stored = localStorage.getItem("sessionId");
+    if (stored) return stored;
+    const newId = `anon-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    localStorage.setItem("sessionId", newId);
+    return newId;
+  });
 
-  const handleFinish = () => {
-    console.log("Exam finished, navigating to results");
-    setLocation(`/results/${params?.id}`);
+  const paperId = params?.id || "";
+
+  const { data: paper, isLoading: paperLoading } = useQuery<EnrichedPaper>({
+    queryKey: [`/api/papers/${paperId}`],
+    enabled: !!paperId,
+  });
+
+  const { data: pages = [], isLoading: pagesLoading } = useQuery<PaperPage[]>({
+    queryKey: [`/api/papers/${paperId}/pages`],
+    enabled: !!paperId,
+  });
+
+  const storedAttemptId = localStorage.getItem(`attempt-${paperId}`);
+  
+  const { data: existingAttempt, isLoading: attemptLoading, error: attemptError } = useQuery<Attempt>({
+    queryKey: [`/api/attempts/${storedAttemptId}`],
+    enabled: !!storedAttemptId,
+    retry: false,
+  });
+
+  const createAttemptMutation = useMutation({
+    mutationFn: async (data: { paperId: string; sessionId: string }) => {
+      const res = await apiRequest("POST", "/api/attempts", data);
+      return await res.json() as Attempt;
+    },
+    onSuccess: (attempt) => {
+      setAttemptId(attempt.id);
+      localStorage.setItem(`attempt-${paperId}`, attempt.id);
+    },
+  });
+
+  useEffect(() => {
+    if (!paperId || attemptId || attemptLoading || createAttemptMutation.isPending) return;
+    
+    if (attemptError || (storedAttemptId && !existingAttempt && !attemptLoading)) {
+      localStorage.removeItem(`attempt-${paperId}`);
+      createAttemptMutation.mutate({ paperId, sessionId });
+    } else if (storedAttemptId && existingAttempt) {
+      if (existingAttempt.completedAt) {
+        localStorage.removeItem(`attempt-${paperId}`);
+        createAttemptMutation.mutate({ paperId, sessionId });
+      } else {
+        setAttemptId(storedAttemptId);
+      }
+    } else if (!storedAttemptId) {
+      createAttemptMutation.mutate({ paperId, sessionId });
+    }
+  }, [paperId, attemptId, storedAttemptId, existingAttempt, attemptLoading, attemptError, sessionId, createAttemptMutation.isPending]);
+
+  const submitPageMutation = useMutation({
+    mutationFn: async (data: { 
+      attemptId: string; 
+      pageNumber: number; 
+      studentAnswer: string;
+      maxMarks: number;
+    }) => {
+      const res = await apiRequest("POST", `/api/attempts/${data.attemptId}/submit-page`, data);
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/attempts/${attemptId}/responses`] });
+    },
+  });
+
+  const handleSubmitPage = async (pageNumber: number, answer: string) => {
+    if (!attemptId || !answer.trim() || pages.length === 0) return;
+    
+    const currentPageData = pages.find(p => p.pageNumber === pageNumber);
+    const maxMarks = currentPageData?.maxMarks || 6;
+    
+    await submitPageMutation.mutateAsync({
+      attemptId,
+      pageNumber,
+      studentAnswer: answer,
+      maxMarks,
+    });
   };
+
+  const handleFinish = async () => {
+    if (!attemptId) return;
+    
+    await apiRequest("POST", `/api/attempts/${attemptId}/complete`, {});
+    localStorage.removeItem(`attempt-${paperId}`);
+    setLocation(`/results/${attemptId}`);
+  };
+
+  if (paperLoading || pagesLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Loading exam paper...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!paper) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg font-medium mb-2">Paper not found</p>
+          <Button onClick={() => setLocation("/")}>Back to Papers</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -29,10 +145,14 @@ export default function ExamPage() {
       </div>
 
       <ExamViewer
-        paperId={params?.id || "1"}
-        paperTitle="AQA Mathematics Paper 1 (Non-Calculator) - Summer 2024"
-        totalPages={12}
-        onSubmit={handleFinish}
+        paperId={paperId}
+        paperTitle={paper.title}
+        totalPages={pages.length}
+        pages={pages}
+        attemptId={attemptId || undefined}
+        onSubmitPage={handleSubmitPage}
+        onFinish={handleFinish}
+        isSubmitting={submitPageMutation.isPending}
       />
     </div>
   );

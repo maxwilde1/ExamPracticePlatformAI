@@ -209,6 +209,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { pageNumber, studentAnswer, questionId, maxMarks } = req.body;
 
+      const attempt = await storage.getAttempt(req.params.id);
+      if (!attempt) {
+        return res.status(404).json({ error: "Attempt not found" });
+      }
+
+      const pages = await storage.getPaperPages(attempt.paperId);
+      const pageData = pages.find(p => p.pageNumber === parseInt(pageNumber));
+      
+      if (!pageData) {
+        return res.status(400).json({ error: "Invalid page number for this paper" });
+      }
+
+      const actualMaxMarks = pageData.maxMarks || maxMarks || 6;
+
       let question;
       if (questionId) {
         question = await storage.getQuestion(questionId);
@@ -216,7 +230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const markingResult = await markAnswer(
         studentAnswer,
-        maxMarks || question?.maxMarks || 10,
+        actualMaxMarks,
         question?.instructions || "Answer the question",
         question?.markSchemeExcerpt || undefined
       );
@@ -230,7 +244,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         aiFeedback: markingResult.feedback,
         aiConfidence: markingResult.confidence,
         improvementTips: markingResult.improvementTips,
-        maxMarks: maxMarks || question?.maxMarks || 10,
+        maxMarks: actualMaxMarks,
         reviewedByHuman: false,
         finalScore: null,
         finalFeedback: null,

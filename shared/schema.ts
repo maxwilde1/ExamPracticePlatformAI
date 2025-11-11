@@ -44,6 +44,7 @@ export const paperPages = pgTable("paper_pages", {
   pageNumber: integer("page_number").notNull(),
   imagePath: text("image_path").notNull(),
   textOcr: text("text_ocr"),
+  maxMarks: integer("max_marks").default(6),
 });
 
 export const questions = pgTable("questions", {
