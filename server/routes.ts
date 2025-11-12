@@ -146,48 +146,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/papers", upload.fields([
-    { name: "paperPdf", maxCount: 1 },
-    { name: "markSchemePdf", maxCount: 1 }
-  ]), async (req, res) => {
-    try {
-      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-      const paperFile = files["paperPdf"]?.[0];
-      const markSchemeFile = files["markSchemePdf"]?.[0];
-
-      if (!paperFile) {
-        return res.status(400).json({ error: "Paper PDF is required" });
-      }
-
-      const paperData = insertPaperSchema.parse({
-        ...req.body,
-        year: parseInt(req.body.year),
-        questionCount: req.body.questionCount ? parseInt(req.body.questionCount) : undefined,
-        totalMarks: req.body.totalMarks ? parseInt(req.body.totalMarks) : undefined,
-        pdfPath: `/uploads/papers/${paperFile.filename}`,
-        markSchemePath: markSchemeFile ? `/uploads/papers/${markSchemeFile.filename}` : undefined,
-      });
-
-      const paper = await storage.createPaper(paperData);
-
-      const pdfPath = path.join(process.cwd(), "uploads", "papers", paperFile.filename);
-      const processed = await processPDF(pdfPath, paper.id);
-
-      for (let i = 0; i < processed.totalPages; i++) {
-        await storage.createPaperPage({
-          paperId: paper.id,
-          pageNumber: i + 1,
-          imagePath: processed.pageImages[i],
-          textOcr: null,
-        });
-      }
-
-      res.json(paper);
-    } catch (error) {
-      console.error("Paper upload error:", error);
-      res.status(500).json({ error: "Failed to upload paper" });
-    }
-  });
 
   app.post("/api/papers/:id/questions", async (req, res) => {
     try {
