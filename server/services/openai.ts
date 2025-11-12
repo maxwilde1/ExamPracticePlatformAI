@@ -289,8 +289,9 @@ Respond in JSON format:
 
     const result = JSON.parse(content) as MarkingResult;
     
-    if (result.awardedMarks < 0 || result.awardedMarks > maxMarks) {
-      result.awardedMarks = Math.max(0, Math.min(maxMarks, result.awardedMarks));
+    // Ensure awarded marks is non-negative
+    if (result.awardedMarks < 0) {
+      result.awardedMarks = 0;
     }
 
     return result;
