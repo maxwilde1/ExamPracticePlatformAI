@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ArrowRight, Save, Send, Loader2, RotateCcw, CheckCircle2, XCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Save, Send, Loader2, RotateCcw, CheckCircle2, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import type { PaperPage, Response, Attempt } from "@shared/schema";
@@ -92,21 +92,15 @@ export default function ExamViewer({
     try {
       await onSubmitQuestion(currentQuestionNumber, answer);
       
+      const feedbackMode = attempt?.feedbackMode || 'immediate';
       toast({
         title: "Answer submitted",
-        description: `Question ${currentQuestionNumber} received AI feedback`,
+        description: feedbackMode === 'immediate' 
+          ? `Question ${currentQuestionNumber} is being marked...` 
+          : `Question ${currentQuestionNumber} saved`,
       });
       
       localStorage.removeItem(`exam-${paperId}-question-${currentQuestionNumber}`);
-      
-      if (currentQuestionIndex < totalQuestions - 1) {
-        setCurrentQuestionIndex(prev => prev + 1);
-      } else {
-        toast({
-          title: "All questions complete!",
-          description: "Click 'Finish Exam' to see your results",
-        });
-      }
     } catch (error) {
       toast({
         title: "Submission failed",
@@ -119,6 +113,12 @@ export default function ExamViewer({
   const handleNextQuestion = () => {
     if (currentQuestionIndex < totalQuestions - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
+    }
+  };
+
+  const handlePreviousQuestion = () => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex(prev => prev - 1);
     }
   };
 
@@ -396,27 +396,28 @@ export default function ExamViewer({
                 </div>
               )}
 
-              {currentResponse && !showFeedback && currentQuestionIndex < totalQuestions - 1 && (
+              <div className="flex gap-2 mt-4">
+                <Button
+                  onClick={handlePreviousQuestion}
+                  disabled={currentQuestionIndex === 0}
+                  variant="outline"
+                  className="flex-1"
+                  data-testid="button-previous-question"
+                >
+                  <ChevronLeft className="w-4 h-4 mr-2" />
+                  Previous
+                </Button>
                 <Button
                   onClick={handleNextQuestion}
-                  className="w-full"
+                  disabled={currentQuestionIndex === totalQuestions - 1}
+                  variant="outline"
+                  className="flex-1"
                   data-testid="button-next-question"
                 >
-                  Next Question
-                  <ArrowRight className="w-4 h-4 ml-2" />
+                  Next
+                  <ChevronRight className="w-4 h-4 ml-2" />
                 </Button>
-              )}
-
-              {showFeedback && currentQuestionIndex < totalQuestions - 1 && (
-                <Button
-                  onClick={handleNextQuestion}
-                  className="w-full"
-                  data-testid="button-next-question"
-                >
-                  Next Question
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              )}
+              </div>
             </div>
           </div>
         </div>
