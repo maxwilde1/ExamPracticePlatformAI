@@ -229,7 +229,7 @@ export class DbStorage implements IStorage {
   }
 
   async getResponses(attemptId: string): Promise<Response[]> {
-    return await db.select().from(responses).where(eq(responses.attemptId, attemptId)).orderBy(responses.pageNumber);
+    return await db.select().from(responses).where(eq(responses.attemptId, attemptId)).orderBy(responses.createdAt);
   }
 
   async updateResponse(id: string, response: Partial<InsertResponse>): Promise<Response | undefined> {
