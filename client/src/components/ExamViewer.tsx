@@ -2,11 +2,12 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ArrowRight, Save, Send, Loader2 } from "lucide-react";
+import { ArrowRight, Save, Send, Loader2, RotateCcw, CheckCircle2, XCircle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import type { PaperPage, Response } from "@shared/schema";
+import type { PaperPage, Response, Attempt } from "@shared/schema";
 
 interface ExamViewerProps {
   paperId: string;
@@ -14,9 +15,14 @@ interface ExamViewerProps {
   pdfUrl: string | null;
   pages: PaperPage[];
   attemptId?: string;
+  attempt?: Attempt;
   onSubmitQuestion: (questionNumber: string, answer: string) => Promise<void>;
+  onMarkAll: () => Promise<void>;
+  onRetake: (responseId: string) => Promise<void>;
+  onStartExam: (feedbackMode: string) => void;
   onFinish: () => void;
   isSubmitting?: boolean;
+  isMarkingAll?: boolean;
 }
 
 export default function ExamViewer({
@@ -25,9 +31,14 @@ export default function ExamViewer({
   pdfUrl,
   pages,
   attemptId,
+  attempt,
   onSubmitQuestion,
+  onMarkAll,
+  onRetake,
+  onStartExam,
   onFinish,
   isSubmitting = false,
+  isMarkingAll = false,
 }: ExamViewerProps) {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answer, setAnswer] = useState("");
@@ -111,19 +122,143 @@ export default function ExamViewer({
     }
   };
 
+  const handleRetakeQuestion = async () => {
+    if (!currentResponse) return;
+    try {
+      await onRetake(currentResponse.id);
+      setAnswer("");
+      toast({
+        title: "Question reset",
+        description: "You can now answer this question again",
+      });
+    } catch (error) {
+      toast({
+        title: "Retake failed",
+        description: "Please try again",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleMarkAllQuestions = async () => {
+    try {
+      await onMarkAll();
+      toast({
+        title: "All answers marked!",
+        description: "Click 'Finish Exam' to see your results",
+      });
+    } catch (error) {
+      toast({
+        title: "Marking failed",
+        description: "Please try again",
+        variant: "destructive",
+      });
+    }
+  };
+
   const progress = (completedQuestions.size / totalQuestions) * 100;
+  const feedbackMode = attempt?.feedbackMode || 'immediate';
+  const showFeedback = feedbackMode === 'immediate' && currentResponse && currentResponse.aiScore !== null;
+  const allAnswered = completedQuestions.size === totalQuestions;
+  const needsMarking = feedbackMode === 'end-of-exam' && allAnswered && responses.some(r => !r.aiScore);
+
+  // Show feedback mode selector if no attempt exists
+  if (!attemptId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted">
+        <Card className="w-full max-w-2xl mx-4">
+          <CardHeader>
+            <CardTitle className="text-2xl">{paperTitle}</CardTitle>
+            <CardDescription>Choose when you'd like to receive feedback</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4">
+              <Card 
+                className="cursor-pointer hover-elevate active-elevate-2 transition-all border-2"
+                onClick={() => onStartExam('immediate')}
+                data-testid="card-immediate-feedback"
+              >
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-primary" />
+                    Immediate Feedback
+                  </CardTitle>
+                  <CardDescription>
+                    Get AI feedback right after answering each question. Perfect for learning as you go.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    ✓ See your marks instantly<br />
+                    ✓ Get improvement tips for each answer<br />
+                    ✓ Retake questions if needed
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card 
+                className="cursor-pointer hover-elevate active-elevate-2 transition-all border-2"
+                onClick={() => onStartExam('end-of-exam')}
+                data-testid="card-end-feedback"
+              >
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <XCircle className="w-5 h-5 text-primary" />
+                    End-of-Exam Feedback
+                  </CardTitle>
+                  <CardDescription>
+                    Focus on answering all questions first. Get all feedback together at the end.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    ✓ Complete the exam without interruptions<br />
+                    ✓ Simulate real exam conditions<br />
+                    ✓ Review all feedback together
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen">
       <div className="border-b p-4">
         <div className="container mx-auto max-w-7xl">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-xl font-semibold">{paperTitle}</h2>
-            {completedQuestions.size === totalQuestions && (
-              <Button onClick={onFinish} data-testid="button-finish-exam">
-                Finish Exam
-              </Button>
-            )}
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-semibold">{paperTitle}</h2>
+              <Badge variant="outline" data-testid="badge-feedback-mode">
+                {feedbackMode === 'immediate' ? 'Immediate Feedback' : 'End-of-Exam Feedback'}
+              </Badge>
+            </div>
+            <div className="flex gap-2">
+              {needsMarking && (
+                <Button 
+                  onClick={handleMarkAllQuestions} 
+                  disabled={isMarkingAll}
+                  data-testid="button-mark-all"
+                >
+                  {isMarkingAll ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Marking...
+                    </>
+                  ) : (
+                    'Get Feedback'
+                  )}
+                </Button>
+              )}
+              {allAnswered && !needsMarking && (
+                <Button onClick={onFinish} data-testid="button-finish-exam">
+                  Finish Exam
+                </Button>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-4">
             <Progress value={progress} className="flex-1" />
@@ -165,7 +300,7 @@ export default function ExamViewer({
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground">
-                  Scroll through the PDF on the left to find this question. Write your answer below and submit for AI marking.
+                  Scroll through the PDF on the left to find this question. Write your answer below and submit{feedbackMode === 'immediate' ? ' for AI marking' : ''}.
                 </p>
               </CardContent>
             </Card>
@@ -182,16 +317,58 @@ export default function ExamViewer({
                   placeholder="Type your answer here..."
                   className="min-h-64 resize-none"
                   data-testid="input-answer"
-                  disabled={completedQuestions.has(currentQuestionNumber)}
+                  disabled={currentResponse && !showFeedback}
                 />
                 <p className="text-xs text-muted-foreground mt-2">
-                  {completedQuestions.has(currentQuestionNumber) 
+                  {currentResponse && !showFeedback
                     ? "This question has been submitted" 
                     : "Auto-saves when you click away"}
                 </p>
               </div>
 
-              {!completedQuestions.has(currentQuestionNumber) && (
+              {showFeedback && (
+                <Card className="border-primary/50 bg-primary/5">
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <CheckCircle2 className="w-5 h-5 text-primary" />
+                      AI Feedback
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <p className="text-sm font-medium">Score: {currentResponse.aiScore} marks</p>
+                      <Badge variant={currentResponse.aiConfidence === 'high' ? 'default' : currentResponse.aiConfidence === 'low' ? 'destructive' : 'secondary'}>
+                        {currentResponse.aiConfidence} confidence
+                      </Badge>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium mb-1">Feedback:</p>
+                      <p className="text-sm text-muted-foreground">{currentResponse.aiFeedback}</p>
+                    </div>
+                    {currentResponse.improvementTips && Array.isArray(currentResponse.improvementTips) && currentResponse.improvementTips.length > 0 && (
+                      <div>
+                        <p className="text-sm font-medium mb-1">Tips for Improvement:</p>
+                        <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                          {(currentResponse.improvementTips as string[]).map((tip, i) => (
+                            <li key={i}>{tip}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <Button
+                      onClick={handleRetakeQuestion}
+                      variant="outline"
+                      className="w-full"
+                      data-testid="button-retake"
+                    >
+                      <RotateCcw className="w-4 h-4 mr-2" />
+                      Retake Question
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              {!currentResponse && (
                 <div className="flex gap-2">
                   <Button
                     onClick={handleAutoSave}
@@ -219,7 +396,18 @@ export default function ExamViewer({
                 </div>
               )}
 
-              {completedQuestions.has(currentQuestionNumber) && currentQuestionIndex < totalQuestions - 1 && (
+              {currentResponse && !showFeedback && currentQuestionIndex < totalQuestions - 1 && (
+                <Button
+                  onClick={handleNextQuestion}
+                  className="w-full"
+                  data-testid="button-next-question"
+                >
+                  Next Question
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              )}
+
+              {showFeedback && currentQuestionIndex < totalQuestions - 1 && (
                 <Button
                   onClick={handleNextQuestion}
                   className="w-full"

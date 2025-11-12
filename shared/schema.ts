@@ -66,6 +66,7 @@ export const attempts = pgTable("attempts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   paperId: varchar("paper_id").notNull().references(() => papers.id),
   sessionId: text("session_id").notNull(),
+  feedbackMode: text("feedback_mode").notNull().default('immediate'),
   startedAt: timestamp("started_at").notNull().default(sql`now()`),
   completedAt: timestamp("completed_at"),
   totalScore: integer("total_score"),

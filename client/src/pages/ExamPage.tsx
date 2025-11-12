@@ -41,13 +41,32 @@ export default function ExamPage() {
   });
 
   const createAttemptMutation = useMutation({
-    mutationFn: async (data: { paperId: string; sessionId: string }) => {
+    mutationFn: async (data: { paperId: string; sessionId: string; feedbackMode?: string }) => {
       const res = await apiRequest("POST", "/api/attempts", data);
       return await res.json() as Attempt;
     },
     onSuccess: (attempt) => {
       setAttemptId(attempt.id);
       localStorage.setItem(`attempt-${paperId}`, attempt.id);
+    },
+  });
+
+  const markAllMutation = useMutation({
+    mutationFn: async (attemptId: string) => {
+      const res = await apiRequest("POST", `/api/attempts/${attemptId}/mark-all`, {});
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/attempts/${attemptId}/responses`] });
+    },
+  });
+
+  const deleteResponseMutation = useMutation({
+    mutationFn: async (responseId: string) => {
+      await apiRequest("DELETE", `/api/responses/${responseId}`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/attempts/${attemptId}/responses`] });
     },
   });
 
@@ -65,7 +84,7 @@ export default function ExamPage() {
         setAttemptId(storedAttemptId);
       }
     } else if (!storedAttemptId) {
-      createAttemptMutation.mutate({ paperId, sessionId });
+      // Don't auto-create here - let user choose feedback mode first
     }
   }, [paperId, attemptId, storedAttemptId, existingAttempt, attemptLoading, attemptError, sessionId, createAttemptMutation.isPending]);
 
@@ -93,6 +112,19 @@ export default function ExamPage() {
     });
   };
 
+  const handleMarkAll = async () => {
+    if (!attemptId) return;
+    await markAllMutation.mutateAsync(attemptId);
+  };
+
+  const handleRetake = async (responseId: string) => {
+    await deleteResponseMutation.mutateAsync(responseId);
+  };
+
+  const handleStartExam = (feedbackMode: string) => {
+    createAttemptMutation.mutate({ paperId, sessionId, feedbackMode });
+  };
+
   const handleFinish = async () => {
     if (!attemptId) return;
     
@@ -101,14 +133,12 @@ export default function ExamPage() {
     setLocation(`/results/${attemptId}`);
   };
 
-  if (paperLoading || pagesLoading || !attemptId) {
+  if (paperLoading || pagesLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">
-            {!attemptId ? "Starting exam..." : "Loading exam paper..."}
-          </p>
+          <p className="text-muted-foreground">Loading exam paper...</p>
         </div>
       </div>
     );
@@ -147,9 +177,14 @@ export default function ExamPage() {
         pdfUrl={paper.pdfUrl}
         pages={pages}
         attemptId={attemptId || undefined}
+        attempt={existingAttempt}
         onSubmitQuestion={handleSubmitQuestion}
+        onMarkAll={handleMarkAll}
+        onRetake={handleRetake}
+        onStartExam={handleStartExam}
         onFinish={handleFinish}
         isSubmitting={submitPageMutation.isPending}
+        isMarkingAll={markAllMutation.isPending}
       />
     </div>
   );

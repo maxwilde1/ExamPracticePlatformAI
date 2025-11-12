@@ -171,6 +171,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const attemptData = insertAttemptSchema.parse({
         paperId: req.body.paperId,
         sessionId,
+        feedbackMode: req.body.feedbackMode || 'immediate',
         completedAt: null,
         totalScore: null,
         maxScore: null,
@@ -205,6 +206,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/responses/:id", async (req, res) => {
+    try {
+      await storage.deleteResponse(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete response error:", error);
+      res.status(500).json({ error: "Failed to delete response" });
+    }
+  });
+
   app.post("/api/attempts/:id/submit-question", async (req, res) => {
     try {
       const { questionNumber, studentAnswer } = req.body;
@@ -233,30 +244,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid question number for this paper" });
       }
 
-      const markingResult = await markAnswer(
-        studentAnswer,
-        paper.pdfUrl,
-        questionPaperPage.pageNumber,
-        paper.markSchemeUrl,
-        questionMarkSchemePage?.pageNumber || questionPaperPage.pageNumber
-      );
+      let markingResult = null;
+      
+      // Only mark immediately if feedbackMode is 'immediate'
+      if (attempt.feedbackMode === 'immediate') {
+        markingResult = await markAnswer(
+          studentAnswer,
+          paper.pdfUrl,
+          questionPaperPage.pageNumber,
+          paper.markSchemeUrl,
+          questionMarkSchemePage?.pageNumber || questionPaperPage.pageNumber
+        );
+      }
 
       const responseData = insertResponseSchema.parse({
         attemptId: req.params.id,
         questionId: null,
         questionNumber,
         studentAnswer,
-        aiScore: markingResult.awardedMarks,
-        aiFeedback: markingResult.feedback,
-        aiConfidence: markingResult.confidence,
-        improvementTips: markingResult.improvementTips,
+        aiScore: markingResult?.awardedMarks || null,
+        aiFeedback: markingResult?.feedback || null,
+        aiConfidence: markingResult?.confidence || null,
+        improvementTips: markingResult?.improvementTips || null,
         reviewedByHuman: false,
         finalScore: null,
         finalFeedback: null,
       });
 
       const response = await storage.createResponse(responseData);
-      res.json({ ...response, ...markingResult });
+      res.json({ ...response, ...(markingResult || {}) });
     } catch (error) {
       console.error("Submit question error:", error);
       res.status(500).json({ error: "Failed to submit question" });
@@ -316,6 +332,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Submit page error:", error);
       res.status(500).json({ error: "Failed to submit page" });
+    }
+  });
+
+  app.post("/api/attempts/:id/mark-all", async (req, res) => {
+    try {
+      const attempt = await storage.getAttempt(req.params.id);
+      if (!attempt) {
+        return res.status(404).json({ error: "Attempt not found" });
+      }
+
+      const paper = await storage.getPaper(attempt.paperId);
+      if (!paper) {
+        return res.status(404).json({ error: "Paper not found" });
+      }
+
+      const responses = await storage.getResponses(req.params.id);
+      const paperPages = await storage.getPaperPages(attempt.paperId);
+      const markSchemePages = await storage.getMarkSchemePages(attempt.paperId);
+
+      // Mark all responses that don't have AI feedback yet
+      const markingPromises = responses
+        .filter(r => !r.aiScore && !r.aiFeedback)
+        .map(async (response) => {
+          const questionPaperPage = paperPages.find(p => p.questionNumber === response.questionNumber);
+          const questionMarkSchemePage = markSchemePages.find(p => p.questionNumber === response.questionNumber);
+
+          if (!questionPaperPage) {
+            return null;
+          }
+
+          const markingResult = await markAnswer(
+            response.studentAnswer,
+            paper.pdfUrl,
+            questionPaperPage.pageNumber,
+            paper.markSchemeUrl,
+            questionMarkSchemePage?.pageNumber || questionPaperPage.pageNumber
+          );
+
+          await storage.updateResponse(response.id, {
+            aiScore: markingResult.awardedMarks,
+            aiFeedback: markingResult.feedback,
+            aiConfidence: markingResult.confidence,
+            improvementTips: markingResult.improvementTips,
+          });
+
+          return markingResult;
+        });
+
+      await Promise.all(markingPromises);
+
+      const updatedResponses = await storage.getResponses(req.params.id);
+      res.json(updatedResponses);
+    } catch (error) {
+      console.error("Mark all error:", error);
+      res.status(500).json({ error: "Failed to mark responses" });
     }
   });
 
