@@ -6,7 +6,9 @@ import path from "path";
 import { promises as fs } from "fs";
 import { processPDF } from "./services/pdf";
 import { markAnswer } from "./services/openai";
+import { processPaper } from "./services/paperProcessor";
 import { insertPaperSchema, insertQuestionSchema, insertAttemptSchema, insertResponseSchema } from "@shared/schema";
+import { z } from "zod";
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -101,6 +103,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(questions);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch questions" });
+    }
+  });
+
+  app.post("/api/papers/process", async (req, res) => {
+    try {
+      const schema = z.object({
+        paperUrl: z.string().url(),
+        markSchemeUrl: z.string().url(),
+      });
+
+      const { paperUrl, markSchemeUrl } = schema.parse(req.body);
+
+      const job = await storage.createProcessingJob({
+        paperUrl,
+        markSchemeUrl,
+        status: 'pending',
+        progress: 0,
+      });
+
+      processPaper(job.id).catch(err => {
+        console.error("Background processing error:", err);
+      });
+
+      res.json({ jobId: job.id });
+    } catch (error) {
+      console.error("Process paper error:", error);
+      res.status(400).json({ error: "Invalid request" });
+    }
+  });
+
+  app.get("/api/papers/process/:jobId", async (req, res) => {
+    try {
+      const job = await storage.getProcessingJob(req.params.jobId);
+      if (!job) {
+        return res.status(404).json({ error: "Job not found" });
+      }
+      res.json(job);
+    } catch (error) {
+      console.error("Get job error:", error);
+      res.status(500).json({ error: "Failed to fetch job status" });
     }
   });
 

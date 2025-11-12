@@ -32,8 +32,8 @@ export const papers = pgTable("papers", {
   title: text("title").notNull(),
   questionCount: integer("question_count"),
   totalMarks: integer("total_marks"),
-  pdfPath: text("pdf_path"),
-  markSchemePath: text("mark_scheme_path"),
+  pdfUrl: text("pdf_url"),
+  markSchemeUrl: text("mark_scheme_url"),
   status: text("status").notNull().default('active'),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
@@ -42,9 +42,14 @@ export const paperPages = pgTable("paper_pages", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   paperId: varchar("paper_id").notNull().references(() => papers.id),
   pageNumber: integer("page_number").notNull(),
-  imagePath: text("image_path").notNull(),
-  textOcr: text("text_ocr"),
-  maxMarks: integer("max_marks").default(6),
+  questionNumber: text("question_number").notNull(),
+});
+
+export const markSchemePages = pgTable("mark_scheme_pages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  paperId: varchar("paper_id").notNull().references(() => papers.id),
+  pageNumber: integer("page_number").notNull(),
+  questionNumber: text("question_number").notNull(),
 });
 
 export const questions = pgTable("questions", {
@@ -91,32 +96,51 @@ export const adminUsers = pgTable("admin_users", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
+export const processingJobs = pgTable("processing_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  paperUrl: text("paper_url").notNull(),
+  markSchemeUrl: text("mark_scheme_url").notNull(),
+  status: text("status").notNull().default('pending'),
+  progress: integer("progress").default(0),
+  currentStep: text("current_step"),
+  paperId: varchar("paper_id").references(() => papers.id),
+  error: text("error"),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  completedAt: timestamp("completed_at"),
+});
+
 export const insertBoardSchema = createInsertSchema(boards).omit({ id: true });
 export const insertLevelSchema = createInsertSchema(levels).omit({ id: true });
 export const insertSubjectSchema = createInsertSchema(subjects).omit({ id: true });
 export const insertPaperSchema = createInsertSchema(papers).omit({ id: true, createdAt: true });
 export const insertPaperPageSchema = createInsertSchema(paperPages).omit({ id: true });
+export const insertMarkSchemePageSchema = createInsertSchema(markSchemePages).omit({ id: true });
 export const insertQuestionSchema = createInsertSchema(questions).omit({ id: true });
 export const insertAttemptSchema = createInsertSchema(attempts).omit({ id: true, startedAt: true });
 export const insertResponseSchema = createInsertSchema(responses).omit({ id: true, createdAt: true });
 export const insertAdminUserSchema = createInsertSchema(adminUsers).omit({ id: true, createdAt: true });
+export const insertProcessingJobSchema = createInsertSchema(processingJobs).omit({ id: true, createdAt: true });
 
 export type Board = typeof boards.$inferSelect;
 export type Level = typeof levels.$inferSelect;
 export type Subject = typeof subjects.$inferSelect;
 export type Paper = typeof papers.$inferSelect;
 export type PaperPage = typeof paperPages.$inferSelect;
+export type MarkSchemePage = typeof markSchemePages.$inferSelect;
 export type Question = typeof questions.$inferSelect;
 export type Attempt = typeof attempts.$inferSelect;
 export type Response = typeof responses.$inferSelect;
 export type AdminUser = typeof adminUsers.$inferSelect;
+export type ProcessingJob = typeof processingJobs.$inferSelect;
 
 export type InsertBoard = z.infer<typeof insertBoardSchema>;
 export type InsertLevel = z.infer<typeof insertLevelSchema>;
 export type InsertSubject = z.infer<typeof insertSubjectSchema>;
 export type InsertPaper = z.infer<typeof insertPaperSchema>;
 export type InsertPaperPage = z.infer<typeof insertPaperPageSchema>;
+export type InsertMarkSchemePage = z.infer<typeof insertMarkSchemePageSchema>;
 export type InsertQuestion = z.infer<typeof insertQuestionSchema>;
 export type InsertAttempt = z.infer<typeof insertAttemptSchema>;
 export type InsertResponse = z.infer<typeof insertResponseSchema>;
 export type InsertAdminUser = z.infer<typeof insertAdminUserSchema>;
+export type InsertProcessingJob = z.infer<typeof insertProcessingJobSchema>;
