@@ -2,8 +2,9 @@ import { storage } from "../storage";
 import { extractPaperMetadata, extractPaperPageMapping, extractMarkSchemePageMapping } from "./openai";
 
 export async function processPaper(jobId: string) {
+  let job;
   try {
-    const job = await storage.getProcessingJob(jobId);
+    job = await storage.getProcessingJob(jobId);
     if (!job) {
       throw new Error("Job not found");
     }
@@ -116,10 +117,14 @@ export async function processPaper(jobId: string) {
     return paper;
   } catch (error) {
     console.error("Paper processing error:", error);
-    await storage.updateProcessingJob(jobId, {
-      status: 'failed',
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-    throw error;
+    try {
+      await storage.updateProcessingJob(jobId, {
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        currentStep: 'Processing failed',
+      });
+    } catch (updateError) {
+      console.error("Failed to update job status:", updateError);
+    }
   }
 }

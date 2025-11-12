@@ -179,6 +179,11 @@ export default function AdminPaperUpload() {
                 <p className="text-xs text-muted-foreground">
                   {job.progress}% complete
                 </p>
+                {job.status === 'failed' && job.error && (
+                  <p className="text-xs text-destructive mt-2" data-testid="text-error-message">
+                    Error: {job.error}
+                  </p>
+                )}
               </div>
             )}
 
