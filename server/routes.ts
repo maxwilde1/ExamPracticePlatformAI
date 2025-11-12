@@ -205,6 +205,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/attempts/:id/submit-question", async (req, res) => {
+    try {
+      const { questionNumber, studentAnswer } = req.body;
+
+      if (!questionNumber || !studentAnswer) {
+        return res.status(400).json({ error: "questionNumber and studentAnswer are required" });
+      }
+
+      const attempt = await storage.getAttempt(req.params.id);
+      if (!attempt) {
+        return res.status(404).json({ error: "Attempt not found" });
+      }
+
+      const paper = await storage.getPaper(attempt.paperId);
+      if (!paper) {
+        return res.status(404).json({ error: "Paper not found" });
+      }
+
+      const paperPages = await storage.getPaperPages(attempt.paperId);
+      const markSchemePages = await storage.getMarkSchemePages(attempt.paperId);
+      
+      const questionPaperPage = paperPages.find(p => p.questionNumber === questionNumber);
+      const questionMarkSchemePage = markSchemePages.find(p => p.questionNumber === questionNumber);
+
+      if (!questionPaperPage) {
+        return res.status(400).json({ error: "Invalid question number for this paper" });
+      }
+
+      const markingResult = await markAnswer(
+        studentAnswer,
+        paper.pdfUrl,
+        questionPaperPage.pageNumber,
+        paper.markSchemeUrl,
+        questionMarkSchemePage?.pageNumber || questionPaperPage.pageNumber
+      );
+
+      const responseData = insertResponseSchema.parse({
+        attemptId: req.params.id,
+        questionId: null,
+        questionNumber,
+        studentAnswer,
+        aiScore: markingResult.awardedMarks,
+        aiFeedback: markingResult.feedback,
+        aiConfidence: markingResult.confidence,
+        improvementTips: markingResult.improvementTips,
+        reviewedByHuman: false,
+        finalScore: null,
+        finalFeedback: null,
+      });
+
+      const response = await storage.createResponse(responseData);
+      res.json({ ...response, ...markingResult });
+    } catch (error) {
+      console.error("Submit question error:", error);
+      res.status(500).json({ error: "Failed to submit question" });
+    }
+  });
+
   app.post("/api/attempts/:id/submit-page", async (req, res) => {
     try {
       const { pageNumber, studentAnswer, questionId, maxMarks } = req.body;
@@ -221,30 +279,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid page number for this paper" });
       }
 
-      const actualMaxMarks = pageData.maxMarks || maxMarks || 6;
-
       let question;
       if (questionId) {
         question = await storage.getQuestion(questionId);
       }
 
+      const paper = await storage.getPaper(attempt.paperId);
+      if (!paper) {
+        return res.status(404).json({ error: "Paper not found" });
+      }
+
       const markingResult = await markAnswer(
         studentAnswer,
-        actualMaxMarks,
-        question?.instructions || "Answer the question",
-        question?.markSchemeExcerpt || undefined
+        paper.pdfUrl,
+        pageData.pageNumber,
+        paper.markSchemeUrl,
+        pageData.pageNumber
       );
 
       const responseData = insertResponseSchema.parse({
         attemptId: req.params.id,
         questionId: questionId || null,
-        pageNumber: parseInt(pageNumber),
+        questionNumber: pageData.questionNumber,
         studentAnswer,
         aiScore: markingResult.awardedMarks,
         aiFeedback: markingResult.feedback,
         aiConfidence: markingResult.confidence,
         improvementTips: markingResult.improvementTips,
-        maxMarks: actualMaxMarks,
         reviewedByHuman: false,
         finalScore: null,
         finalFeedback: null,
@@ -263,12 +324,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const responses = await storage.getResponses(req.params.id);
       
       const totalScore = responses.reduce((sum, r) => sum + (r.aiScore || 0), 0);
-      const maxScore = responses.reduce((sum, r) => sum + r.maxMarks, 0);
 
       const attempt = await storage.updateAttempt(req.params.id, {
         completedAt: new Date(),
         totalScore,
-        maxScore,
+        maxScore: null,
       });
 
       res.json(attempt);

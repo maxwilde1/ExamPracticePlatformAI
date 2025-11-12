@@ -72,11 +72,10 @@ export default function ExamPage() {
   const submitPageMutation = useMutation({
     mutationFn: async (data: { 
       attemptId: string; 
-      pageNumber: number; 
+      questionNumber: string; 
       studentAnswer: string;
-      maxMarks: number;
     }) => {
-      const res = await apiRequest("POST", `/api/attempts/${data.attemptId}/submit-page`, data);
+      const res = await apiRequest("POST", `/api/attempts/${data.attemptId}/submit-question`, data);
       return await res.json();
     },
     onSuccess: () => {
@@ -84,17 +83,13 @@ export default function ExamPage() {
     },
   });
 
-  const handleSubmitPage = async (pageNumber: number, answer: string) => {
-    if (!attemptId || !answer.trim() || pages.length === 0) return;
-    
-    const currentPageData = pages.find(p => p.pageNumber === pageNumber);
-    const maxMarks = currentPageData?.maxMarks || 6;
+  const handleSubmitQuestion = async (questionNumber: string, answer: string) => {
+    if (!attemptId || !answer.trim()) return;
     
     await submitPageMutation.mutateAsync({
       attemptId,
-      pageNumber,
+      questionNumber,
       studentAnswer: answer,
-      maxMarks,
     });
   };
 
@@ -149,10 +144,10 @@ export default function ExamPage() {
       <ExamViewer
         paperId={paperId}
         paperTitle={paper.title}
-        totalPages={pages.length}
+        pdfUrl={paper.pdfUrl}
         pages={pages}
         attemptId={attemptId || undefined}
-        onSubmitPage={handleSubmitPage}
+        onSubmitQuestion={handleSubmitQuestion}
         onFinish={handleFinish}
         isSubmitting={submitPageMutation.isPending}
       />

@@ -4,17 +4,17 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ChevronLeft, ChevronRight, Save, Send, Loader2 } from "lucide-react";
+import { ArrowRight, Save, Send, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { PaperPage, Response } from "@shared/schema";
 
 interface ExamViewerProps {
   paperId: string;
   paperTitle: string;
-  totalPages: number;
+  pdfUrl: string | null;
   pages: PaperPage[];
   attemptId?: string;
-  onSubmitPage: (pageNumber: number, answer: string) => Promise<void>;
+  onSubmitQuestion: (questionNumber: string, answer: string) => Promise<void>;
   onFinish: () => void;
   isSubmitting?: boolean;
 }
@@ -22,72 +22,77 @@ interface ExamViewerProps {
 export default function ExamViewer({
   paperId,
   paperTitle,
-  totalPages,
+  pdfUrl,
   pages,
   attemptId,
-  onSubmitPage,
+  onSubmitQuestion,
   onFinish,
   isSubmitting = false,
 }: ExamViewerProps) {
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answer, setAnswer] = useState("");
   const { toast } = useToast();
+
+  const sortedPages = [...pages].sort((a, b) => a.pageNumber - b.pageNumber);
+  const uniqueQuestions: string[] = [];
+  const seen = new Set<string>();
+  for (const page of sortedPages) {
+    if (!seen.has(page.questionNumber)) {
+      uniqueQuestions.push(page.questionNumber);
+      seen.add(page.questionNumber);
+    }
+  }
+  
+  const currentQuestionNumber = uniqueQuestions[currentQuestionIndex] || "";
+  const totalQuestions = uniqueQuestions.length;
 
   const { data: responses = [] } = useQuery<Response[]>({
     queryKey: [`/api/attempts/${attemptId}/responses`],
     enabled: !!attemptId,
   });
 
-  const completedPages = new Set(responses.map(r => r.pageNumber));
-  const currentResponse = responses.find(r => r.pageNumber === currentPage);
+  const completedQuestions = new Set(responses.map(r => r.questionNumber));
+  const currentResponse = responses.find(r => r.questionNumber === currentQuestionNumber);
 
   useEffect(() => {
     if (currentResponse) {
       setAnswer(currentResponse.studentAnswer);
     } else {
-      const saved = localStorage.getItem(`exam-${paperId}-page-${currentPage}`);
+      const saved = localStorage.getItem(`exam-${paperId}-question-${currentQuestionNumber}`);
       setAnswer(saved || "");
     }
-  }, [currentPage, paperId, currentResponse]);
-
-  const handlePrevious = () => {
-    setCurrentPage(prev => prev > 1 ? prev - 1 : prev);
-  };
-
-  const handleNext = () => {
-    setCurrentPage(prev => prev < totalPages ? prev + 1 : prev);
-  };
+  }, [currentQuestionNumber, paperId, currentResponse]);
 
   const handleAutoSave = () => {
     if (!answer.trim()) {
-      localStorage.removeItem(`exam-${paperId}-page-${currentPage}`);
+      localStorage.removeItem(`exam-${paperId}-question-${currentQuestionNumber}`);
       return;
     }
-    localStorage.setItem(`exam-${paperId}-page-${currentPage}`, answer);
+    localStorage.setItem(`exam-${paperId}-question-${currentQuestionNumber}`, answer);
     toast({
       description: "Answer auto-saved",
       duration: 2000,
     });
   };
 
-  const handleSubmitPage = async () => {
+  const handleSubmitQuestion = async () => {
     if (!answer.trim()) return;
     
     try {
-      await onSubmitPage(currentPage, answer);
+      await onSubmitQuestion(currentQuestionNumber, answer);
       
       toast({
         title: "Answer submitted",
-        description: `Page ${currentPage} received AI feedback`,
+        description: `Question ${currentQuestionNumber} received AI feedback`,
       });
       
-      localStorage.removeItem(`exam-${paperId}-page-${currentPage}`);
+      localStorage.removeItem(`exam-${paperId}-question-${currentQuestionNumber}`);
       
-      if (currentPage < totalPages) {
-        handleNext();
+      if (currentQuestionIndex < totalQuestions - 1) {
+        setCurrentQuestionIndex(prev => prev + 1);
       } else {
         toast({
-          title: "All pages complete!",
+          title: "All questions complete!",
           description: "Click 'Finish Exam' to see your results",
         });
       }
@@ -100,8 +105,13 @@ export default function ExamViewer({
     }
   };
 
-  const progress = (completedPages.size / totalPages) * 100;
-  const currentPageData = pages.find(p => p.pageNumber === currentPage);
+  const handleNextQuestion = () => {
+    if (currentQuestionIndex < totalQuestions - 1) {
+      setCurrentQuestionIndex(prev => prev + 1);
+    }
+  };
+
+  const progress = (completedQuestions.size / totalQuestions) * 100;
 
   return (
     <div className="flex flex-col h-screen">
@@ -109,7 +119,7 @@ export default function ExamViewer({
         <div className="container mx-auto max-w-7xl">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-xl font-semibold">{paperTitle}</h2>
-            {completedPages.size === totalPages && (
+            {completedQuestions.size === totalQuestions && (
               <Button onClick={onFinish} data-testid="button-finish-exam">
                 Finish Exam
               </Button>
@@ -118,58 +128,30 @@ export default function ExamViewer({
           <div className="flex items-center gap-4">
             <Progress value={progress} className="flex-1" />
             <span className="text-sm text-muted-foreground whitespace-nowrap">
-              {completedPages.size} / {totalPages} completed
+              {completedQuestions.size} / {totalQuestions} completed
             </span>
           </div>
         </div>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="w-[60%] border-r flex flex-col">
-          <div className="flex-1 bg-muted/30 flex items-center justify-center p-8 overflow-auto">
-            {currentPageData ? (
-              <img 
-                src={currentPageData.imagePath}
-                alt={`Page ${currentPage}`}
-                className="max-w-full max-h-full object-contain shadow-lg"
-                data-testid={`img-page-${currentPage}`}
+        <div className="w-[60%] border-r flex flex-col bg-muted/30">
+          <div className="flex-1 overflow-auto p-4">
+            {pdfUrl ? (
+              <iframe
+                src={`${pdfUrl}#view=FitH`}
+                className="w-full h-full border-0"
+                title="Exam Paper"
+                data-testid="pdf-viewer"
               />
             ) : (
-              <div className="text-center text-muted-foreground">
-                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
-                <p className="text-sm">Loading page {currentPage}...</p>
+              <div className="flex items-center justify-center h-full text-center text-muted-foreground">
+                <div>
+                  <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
+                  <p className="text-sm">Loading PDF...</p>
+                </div>
               </div>
             )}
-          </div>
-
-          <div className="border-t p-4 bg-background">
-            <div className="flex items-center justify-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handlePrevious}
-                disabled={currentPage === 1}
-                data-testid="button-previous"
-              >
-                <ChevronLeft className="w-4 h-4 mr-1" />
-                Previous
-              </Button>
-              
-              <span className="text-sm px-4" data-testid="text-page-number">
-                Page {currentPage} of {totalPages}
-              </span>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleNext}
-                disabled={currentPage === totalPages}
-                data-testid="button-next"
-              >
-                Next
-                <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
-            </div>
           </div>
         </div>
 
@@ -177,11 +159,13 @@ export default function ExamViewer({
           <div className="p-6 flex-1 overflow-auto">
             <Card className="mb-4">
               <CardHeader>
-                <CardTitle className="text-lg">Page {currentPage} Answer</CardTitle>
+                <CardTitle className="text-lg">
+                  Question {currentQuestionNumber}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground">
-                  Review the question on the left and write your answer below. Your answer will be marked by AI.
+                  Scroll through the PDF on the left to find this question. Write your answer below and submit for AI marking.
                 </p>
               </CardContent>
             </Card>
@@ -198,16 +182,16 @@ export default function ExamViewer({
                   placeholder="Type your answer here..."
                   className="min-h-64 resize-none"
                   data-testid="input-answer"
-                  disabled={completedPages.has(currentPage)}
+                  disabled={completedQuestions.has(currentQuestionNumber)}
                 />
                 <p className="text-xs text-muted-foreground mt-2">
-                  {completedPages.has(currentPage) 
-                    ? "This page has been submitted" 
+                  {completedQuestions.has(currentQuestionNumber) 
+                    ? "This question has been submitted" 
                     : "Auto-saves when you click away"}
                 </p>
               </div>
 
-              {!completedPages.has(currentPage) && (
+              {!completedQuestions.has(currentQuestionNumber) && (
                 <div className="flex gap-2">
                   <Button
                     onClick={handleAutoSave}
@@ -220,19 +204,30 @@ export default function ExamViewer({
                     Save
                   </Button>
                   <Button
-                    onClick={handleSubmitPage}
+                    onClick={handleSubmitQuestion}
                     disabled={!answer.trim() || isSubmitting}
                     className="flex-1"
-                    data-testid="button-submit-page"
+                    data-testid="button-submit-question"
                   >
                     {isSubmitting ? (
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     ) : (
                       <Send className="w-4 h-4 mr-2" />
                     )}
-                    Submit Page
+                    Submit Answer
                   </Button>
                 </div>
+              )}
+
+              {completedQuestions.has(currentQuestionNumber) && currentQuestionIndex < totalQuestions - 1 && (
+                <Button
+                  onClick={handleNextQuestion}
+                  className="w-full"
+                  data-testid="button-next-question"
+                >
+                  Next Question
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
               )}
             </div>
           </div>

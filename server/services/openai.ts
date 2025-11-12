@@ -214,29 +214,26 @@ Respond in JSON format with a "mappings" array:
 
 export async function markAnswer(
   studentAnswer: string,
-  maxMarks: number,
-  questionInstructions: string,
-  markSchemeExcerpt?: string
+  paperPdfUrl: string | null,
+  paperPageNumber: number,
+  markSchemePdfUrl: string | null,
+  markSchemePageNumber: number
 ): Promise<MarkingResult> {
   const prompt = `You are an expert exam marker for GCSE and A-Level examinations. Your task is to mark a student's answer fairly and accurately.
 
-Question Instructions:
-${questionInstructions}
-
-Maximum Marks: ${maxMarks}
-
-${markSchemeExcerpt ? `Mark Scheme Guidance:\n${markSchemeExcerpt}\n` : ''}
+I am providing you with:
+1. The exam paper PDF - please look at page ${paperPageNumber} to see the question
+2. The mark scheme PDF - please look at page ${markSchemePageNumber} for marking guidance
+3. The student's answer below
 
 Student's Answer:
 ${studentAnswer}
 
-Please provide:
-1. The awarded marks (0 to ${maxMarks})
-2. Brief feedback explaining the marks awarded
-3. 2-3 specific improvement tips for the student
-4. Your confidence level in this marking (low/medium/high)
-
-Be strict but fair. Award marks for correct methodology, accurate answers, and clear working. Deduct marks for missing steps, incorrect calculations, or unclear explanations.
+Please mark this answer by:
+1. Reading the question from page ${paperPageNumber} of the exam paper PDF
+2. Consulting the mark scheme on page ${markSchemePageNumber} of the mark scheme PDF
+3. Awarding marks based on the official marking criteria
+4. Providing constructive feedback
 
 Respond in JSON format:
 {
@@ -247,9 +244,40 @@ Respond in JSON format:
 }`;
 
   try {
+    const messages: any[] = [
+      {
+        role: "user",
+        content: []
+      }
+    ];
+
+    messages[0].content.push({ type: "text", text: prompt });
+
+    if (paperPdfUrl) {
+      const paperBase64 = await downloadPdfAsBase64(paperPdfUrl);
+      messages[0].content.push({
+        type: "file",
+        file: {
+          filename: "exam-paper.pdf",
+          file_data: `data:application/pdf;base64,${paperBase64}`
+        }
+      });
+    }
+
+    if (markSchemePdfUrl) {
+      const markSchemeBase64 = await downloadPdfAsBase64(markSchemePdfUrl);
+      messages[0].content.push({
+        type: "file",
+        file: {
+          filename: "mark-scheme.pdf",
+          file_data: `data:application/pdf;base64,${markSchemeBase64}`
+        }
+      });
+    }
+
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
+      messages,
       response_format: { type: "json_object" },
       temperature: 0.3,
     });
