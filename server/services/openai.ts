@@ -219,7 +219,7 @@ export async function markAnswer(
   markSchemePdfUrl: string | null,
   markSchemePageNumber: number
 ): Promise<MarkingResult> {
-  const prompt = `You are an expert exam marker for GCSE and A-Level examinations. Your task is to mark a student's answer fairly and accurately.
+  const prompt = `You are an expert exam marker for GCSE and A-Level examinations. Your task is to mark a student's answer fairly, critically and accurately.
 
 I am providing you with:
 1. The exam paper PDF - please look at page ${paperPageNumber} to see the question
